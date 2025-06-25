@@ -6,16 +6,21 @@ from telegram.ext import (
 )
 
 TOKEN = os.environ.get("TOKEN")
+GLEB_ID = 277837387
 
 VOLUME, WEIGHT = range(2)
 user_data = {}
 
+main_menu_keyboard = ReplyKeyboardMarkup(
+    [[KeyboardButton("Рассчитать плотность")], [KeyboardButton("Позвать Глеба")]],
+    resize_keyboard=True,
+    one_time_keyboard=True
+)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[KeyboardButton("Рассчитать плотность")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     await update.message.reply_text(
-        "Привет! Нажми кнопку ниже, чтобы рассчитать плотность груза.",
-        reply_markup=reply_markup
+        "Привет! 👋\n\nВыберите действие:",
+        reply_markup=main_menu_keyboard
     )
 
 async def density_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,7 +49,10 @@ async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
         volume = context.user_data['volume']
         density = weight / volume
 
-        keyboard = [[KeyboardButton("Новый расчёт")]]
+        keyboard = [
+            [KeyboardButton("Новый расчёт")],
+            [KeyboardButton("Вернуться в меню")]
+        ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
         await update.message.reply_text(
@@ -58,6 +66,15 @@ async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await density_command(update, context)
+
+async def return_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await start(update, context)
+
+async def call_gleb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    text = f"🚨 Пользователь @{user.username or user.first_name} нажал 'Позвать Глеба'"
+    await context.bot.send_message(chat_id=GLEB_ID, text=text)
+    await update.message.reply_text("Глебу отправлено уведомление ✅")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Расчёт отменён.")
@@ -76,12 +93,16 @@ def main():
             VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_volume)],
             WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weight)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)
+        ],
         conversation_timeout=300  # 5 минут
     )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
+    app.add_handler(MessageHandler(filters.Regex("^Позвать Глеба$"), call_gleb))
 
     app.run_polling()
 
