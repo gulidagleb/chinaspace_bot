@@ -143,7 +143,7 @@ async def get_packaging_volume(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # Расчет доставки — шаг 1: выбор категории
 async def delivery_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    categories = delivery_df['Категория'].dropna().unique()
+    categories = delivery_df['productType'].dropna().unique()
     keyboard = [[KeyboardButton(cat)] for cat in categories]
     await update.message.reply_text("Выберите категорию товара:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return DELIVERY_CATEGORY
@@ -175,7 +175,7 @@ async def delivery_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
 
         density = weight / volume
-        df = delivery_df[delivery_df['Категория'] == category]
+        df = delivery_df[delivery_df['productType'] == category]
 
         if density < 100:
             row = df[df['Плотность от'] <= density]
