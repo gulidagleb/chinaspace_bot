@@ -149,10 +149,8 @@ async def setup_bot_commands(app):
         BotCommand("cancel", "Отменить расчёт")
     ])
 
-def main():
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
 
     density_conv = ConversationHandler(
         entry_points=[
@@ -178,7 +176,7 @@ def main():
         states={
             PACKAGING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_type)],
             PACKAGING_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_volume)]
-        },
+        ],
         fallbacks=[
             CommandHandler("cancel", cancel),
             MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)
@@ -186,15 +184,19 @@ def main():
         conversation_timeout=300
     )
 
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(density_conv)
     app.add_handler(packaging_conv)
     app.add_handler(MessageHandler(filters.Regex("^Позвать Глеба$"), call_gleb))
 
-    async def run():
-        await setup_bot_commands(app)
-        await app.run_polling()
-
-    asyncio.run(run())
+    await setup_bot_commands(app)
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    try:
+        asyncio.run(main())
+    except RuntimeError:
+        import nest_asyncio
+        nest_asyncio.apply()
+        asyncio.get_event_loop().run_until_complete(main())
