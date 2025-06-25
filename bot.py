@@ -138,9 +138,11 @@ async def calc_transport_fee(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # === ДОСТАВКА (быстрое авто) ===
 
 async def delivery_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()  # 💡 сбрасываем данные при новом запросе
     keyboard = [[KeyboardButton(k)] for k in cargo_map.keys()]
     await update.message.reply_text("Выберите тип товара:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return DELIVERY_TYPE
+
 
 async def get_delivery_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
