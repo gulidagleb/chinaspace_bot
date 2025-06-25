@@ -178,12 +178,12 @@ async def delivery_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
         df = delivery_df[delivery_df['productType'] == category]
 
         if density < 100:
-            row = df[df['Плотность от'] <= density]
-            row = row[row['Плотность до'] >= density]
+            row = df[df['min'] <= density]
+            row = row[row['max'] >= density]
             if row.empty:
                 await update.message.reply_text("Не найдена подходящая ставка.")
                 return ConversationHandler.END
-            rate = row.iloc[0]['Ставка за м3']
+            rate = row.iloc[0]['rate']
             total = rate * volume
             await update.message.reply_text(
                 f"Объём: {volume} м³\nВес: {weight} кг\nПлотность: {density:.2f} кг/м³\n"
@@ -194,7 +194,7 @@ async def delivery_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if row.empty:
                 await update.message.reply_text("Не найдена подходящая ставка.")
                 return ConversationHandler.END
-            rate = row.iloc[0]['Ставка за кг']
+            rate = row.iloc[0]['rate']
             total = rate * weight
             await update.message.reply_text(
                 f"Объём: {volume} м³\nВес: {weight} кг\nПлотность: {density:.2f} кг/м³\n"
