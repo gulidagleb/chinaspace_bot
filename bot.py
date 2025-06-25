@@ -176,7 +176,7 @@ async def main():
         states={
             PACKAGING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_type)],
             PACKAGING_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_volume)]
-        ],
+        },
         fallbacks=[
             CommandHandler("cancel", cancel),
             MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)
