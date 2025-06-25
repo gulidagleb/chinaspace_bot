@@ -114,7 +114,8 @@ async def call_gleb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def packaging_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[KeyboardButton(name)] for name in packaging_options.keys()]
-    return await update.message.reply_text("Какая упаковка нужна?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)), PACKAGING_TYPE
+    await update.message.reply_text("Какая упаковка нужна?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return PACKAGING_TYPE
 
 async def get_packaging_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = update.message.text
