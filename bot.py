@@ -15,8 +15,17 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+# Получение токена из переменной окружения
 TOKEN = os.environ.get("TOKEN")
 GLEB_ID = 277837387
+
+# Состояния для ConversationHandler
+VOLUME, WEIGHT, DELIVERY_TYPE, PACKAGING_TYPE, DELIVERY_RESULT = range(5)
+user_data = {}
+
+# Загрузка данных о ставках доставки
+DELIVERY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSsjTJ6lsQrm1SuD9xWWtD2PNPE3f94d9C_fQ1MO5dVt--Fl4jUsOlupp8qksdb_w/pub?gid=1485895245&single=true&output=csv"
+delivery_df = pd.read_csv(DELIVERY_CSV_URL)
 
 CATEGORY_LABELS = {
     "CONSUMER_GOODS": "ТНП",
@@ -24,6 +33,8 @@ CATEGORY_LABELS = {
     "CLOTH": "Одежда",
     "SHOES": "Обувь"
 }
+
+REVERSE_CATEGORY_LABELS = {v: k for k, v in CATEGORY_LABELS.items()}
 
 PACKAGING_OPTIONS = {
     "Скотч-мешок": 2,
@@ -39,142 +50,135 @@ PACKAGING_OPTIONS = {
 }
 
 main_menu_keyboard = ReplyKeyboardMarkup(
-    [[KeyboardButton("Рассчитать доставку (быстрое авто)")],
-     [KeyboardButton("Позвать Глеба")]],
+    [[KeyboardButton("Рассчитать доставку за 5 секунд")],
+     [KeyboardButton("Написать менеджеру")]],
     resize_keyboard=True
 )
-
-VOLUME, WEIGHT, DELIVERY_TYPE, PACKAGING = range(4)
-user_data = {}
-call_tracker = {}
-
-DELIVERY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSsjTJ6lsQrm1SuD9xWWtD2PNPE3f94d9C_fQ1MO5dVt--Fl4jUsOlupp8qksdb_w/pub?gid=1485895245&single=true&output=csv"
-delivery_df = pd.read_csv(DELIVERY_CSV_URL)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! 👋\n\nВыберите действие:", reply_markup=main_menu_keyboard)
 
-async def call_gleb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    now = time.time()
-    last_call = call_tracker.get(user_id, 0)
-    if now - last_call < 10:
-        await update.message.reply_text("Вы уже звали Глеба недавно. Подождите 10 секунд ✋")
-        return
-    call_tracker[user_id] = now
-    username = user.username or user.first_name
-    await context.bot.send_message(chat_id=GLEB_ID, text=f"🚨 Пользователь @{username} нажал 'Позвать Глеба'")
-    await update.message.reply_text("Глебу отправлено уведомление ✅")
+async def contact_manager(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Напишите нам 👉 @chinaspace_bot")
 
 async def delivery_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    categories = delivery_df['productType'].dropna().unique()
-    keyboard = [[KeyboardButton(CATEGORY_LABELS.get(cat, cat))] for cat in categories]
-    await update.message.reply_text("Выберите категорию товара:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-    return DELIVERY_TYPE
-
-async def delivery_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reverse_labels = {v: k for k, v in CATEGORY_LABELS.items()}
-    user_choice = update.message.text.strip()
-    product_type = reverse_labels.get(user_choice)
-    if not product_type:
-        await update.message.reply_text("Пожалуйста, выберите категорию из списка")
-        return DELIVERY_TYPE
-    context.user_data['delivery_product_type'] = product_type
-    context.user_data['delivery_category_label'] = user_choice
-    await update.message.reply_text("Введите объём груза в м³ (например: 1,5)")
+    await update.message.reply_text("Введите объём груза в м³ (например: 1,5):")
     return VOLUME
 
-async def delivery_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         volume = float(update.message.text.replace(",", "."))
-        context.user_data['delivery_volume'] = volume
-        await update.message.reply_text("Введите вес груза в кг (например: 300)")
+        if volume <= 0:
+            raise ValueError
+        context.user_data['volume'] = volume
+        await update.message.reply_text("Введите вес груза в кг (например: 300):")
         return WEIGHT
     except:
         await update.message.reply_text("Введите объём корректно (например: 1,5)")
         return VOLUME
 
-async def delivery_packaging(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         weight = float(update.message.text.replace(",", "."))
-        context.user_data['delivery_weight'] = weight
-        keyboard = [[KeyboardButton(name)] for name in PACKAGING_OPTIONS.keys()]
-        await update.message.reply_text("Как хотите упаковать?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-        return PACKAGING
+        if weight <= 0:
+            raise ValueError
+        context.user_data['weight'] = weight
+        keyboard = [[KeyboardButton(name)] for name in CATEGORY_LABELS.values()]
+        await update.message.reply_text("Выберите категорию товара:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+        return DELIVERY_TYPE
     except:
         await update.message.reply_text("Введите вес корректно (например: 300)")
         return WEIGHT
 
-async def delivery_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    selected = update.message.text.strip()
+    if selected not in REVERSE_CATEGORY_LABELS:
+        await update.message.reply_text("Выберите категорию из списка")
+        return DELIVERY_TYPE
+    context.user_data['product_type'] = REVERSE_CATEGORY_LABELS[selected]
+    keyboard = [[KeyboardButton(name)] for name in PACKAGING_OPTIONS.keys()]
+    await update.message.reply_text("Как хотите упаковать?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return PACKAGING_TYPE
+
+async def get_packaging(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = update.message.text.strip()
+    if choice not in PACKAGING_OPTIONS:
+        await update.message.reply_text("Выберите упаковку из предложенного списка")
+        return PACKAGING_TYPE
+    context.user_data['packaging_rate'] = PACKAGING_OPTIONS[choice]
+    context.user_data['packaging_name'] = choice
+    return await calculate_delivery(update, context)
+
+async def calculate_delivery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        packaging_type = update.message.text.strip()
-        if packaging_type not in PACKAGING_OPTIONS:
-            await update.message.reply_text("Выберите тип упаковки из предложенного списка")
-            return PACKAGING
+        volume = context.user_data['volume']
+        weight = context.user_data['weight']
+        product_type = context.user_data['product_type']
+        packaging_rate = context.user_data['packaging_rate']
+        packaging_name = context.user_data['packaging_name']
 
-        volume = context.user_data['delivery_volume']
-        weight = context.user_data['delivery_weight']
         density = weight / volume
-        product_type = context.user_data['delivery_product_type']
-
         df_filtered = delivery_df[delivery_df['productType'] == product_type]
 
         if density <= 100:
             row = df_filtered[df_filtered['min'] < density]
-            row = row.sort_values(by='min').iloc[-1:]
-            price = float(row.iloc[0]['rate'])
-            rate_str = f"{price:.2f} $/м³"
-            cost = volume * price
+            if row.empty:
+                raise ValueError("Нет подходящей ставки")
+            rate = float(row.iloc[0]['rate'])
+            delivery_cost = volume * rate
+            rate_text = f"{rate} $/м³"
         else:
             row = df_filtered[(df_filtered['min'] < density) & (density <= df_filtered['max'])]
-            price = float(row.iloc[0]['rate'])
-            rate_str = f"{price:.2f} $/кг"
-            cost = weight * price
+            if row.empty:
+                raise ValueError("Нет подходящей ставки")
+            rate = float(row.iloc[0]['rate'])
+            delivery_cost = weight * rate
+            rate_text = f"{rate} $/кг"
 
-        packaging_cost = (volume / 0.2) * PACKAGING_OPTIONS[packaging_type]
-        transport_fee = (volume / 0.2) * 6
-        total = cost + packaging_cost + transport_fee
+        packaging_cost = (volume / 0.2) * packaging_rate
+        transport_cost = (volume / 0.2) * 6
+        total = delivery_cost + packaging_cost + transport_cost
 
-        category_label = context.user_data['delivery_category_label']
-
-        await update.message.reply_text(
-            f"<b>По вашему запросу:</b>\n{category_label} / {packaging_type}\n"
-            f"{volume:.2f} м³ {weight:.1f} кг (Плотность: {density:.2f} кг/м³)\n\n"
-            f"<b>Расчёт:</b>\nДоставка в РФ: {cost:.2f} $ ({rate_str})\n"
-            f"Упаковка: {packaging_cost:.2f} $\nТранспортный сбор: {transport_fee:.2f} $\n\n"
-            f"<b>Итого Авто 12–18 дней:</b> {total:.2f} $",
-            parse_mode="HTML",
-            reply_markup=main_menu_keyboard
+        response = (
+            f"**По вашему запросу:**\n"
+            f"{CATEGORY_LABELS[product_type]} / {packaging_name}\n"
+            f"{volume} м³ {weight} кг (Плотность: {density:.2f} кг/м³)\n\n"
+            f"**Расчет:**\n"
+            f"Доставка в РФ: {delivery_cost:.2f} $ ({rate_text})\n"
+            f"Упаковка: {packaging_cost:.2f} $\n"
+            f"Транспортный сбор: {transport_cost:.2f} $\n\n"
+            f"**Итого Авто 12-18 дней:**\n"
+            f"{total:.2f} $"
         )
+
+        await update.message.reply_text(response, reply_markup=main_menu_keyboard, parse_mode="Markdown")
         return ConversationHandler.END
+
     except Exception as e:
-        logging.exception("Ошибка при расчёте доставки")
-        await update.message.reply_text("Произошла ошибка при расчёте. Убедитесь, что вы ввели корректные данные.")
-        return PACKAGING
+        logging.exception("Ошибка в расчёте доставки")
+        await update.message.reply_text("Произошла ошибка при расчёте. Убедитесь, что вы выбрали все параметры корректно.")
+        return ConversationHandler.END
 
 async def setup_bot_commands(app):
     await app.bot.set_my_commands([
-        BotCommand("start", "Начать работу")
+        BotCommand("start", "Начать работу"),
     ])
 
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Regex("^Написать менеджеру$"), contact_manager))
     app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^Рассчитать доставку \\(быстрое авто\\)$"), delivery_start)],
+        entry_points=[MessageHandler(filters.Regex("^Рассчитать доставку за 5 секунд$"), delivery_start)],
         states={
-            DELIVERY_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, delivery_volume)],
-            VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, delivery_weight)],
-            WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, delivery_packaging)],
-            PACKAGING: [MessageHandler(filters.TEXT & ~filters.COMMAND, delivery_result)]
+            VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_volume)],
+            WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weight)],
+            DELIVERY_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_category)],
+            PACKAGING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging)]
         },
-        fallbacks=[MessageHandler(filters.Regex("^Позвать Глеба$"), call_gleb)],
+        fallbacks=[CommandHandler("start", start)],
         conversation_timeout=300
     ))
-
-    app.add_handler(MessageHandler(filters.Regex("^Позвать Глеба$"), call_gleb))
     await setup_bot_commands(app)
     await app.run_polling()
 
