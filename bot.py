@@ -13,93 +13,24 @@ from telegram.ext import (
 TOKEN = os.environ.get("TOKEN")
 GLEB_ID = 277837387
 
+# Шаги для ConversationHandler
 VOLUME, WEIGHT, PACKAGING_TYPE, PACKAGING_VOLUME, TRANSPORT_VOLUME, DELIVERY_TYPE, DELIVERY_VOLUME, DELIVERY_WEIGHT = range(8)
 user_data = {}
 call_tracker = {}
 
+# Загрузка таблицы ставок доставки
 csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSsjTJ6lsQrm1SuD9xWWtD2PNPE3f94d9C_fQ1MO5dVt--Fl4jUsOlupp8qksdb_w/pub?gid=1485895245&single=true&output=csv"
-response = requests.get(csv_url)
-delivery_df = pd.read_csv(StringIO(response.text))
+df = pd.read_csv(StringIO(requests.get(csv_url).text))
 
+# Главное меню
 main_menu_keyboard = ReplyKeyboardMarkup(
     [[KeyboardButton("Рассчитать плотность")],
      [KeyboardButton("Рассчитать упаковку")],
      [KeyboardButton("Рассчитать транспортный сбор")],
      [KeyboardButton("Рассчитать доставку (быстрое авто)")],
      [KeyboardButton("Позвать Глеба")]],
-    resize_keyboard=True,
-    one_time_keyboard=False
+    resize_keyboard=True
 )
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Расчёт отменён.", reply_markup=main_menu_keyboard)
-    return ConversationHandler.END
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! 👋\n\nВыберите действие:", reply_markup=main_menu_keyboard)
-
-async def call_gleb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    now = time.time()
-    last_call = call_tracker.get(user_id, 0)
-
-    if now - last_call < 10:
-        await update.message.reply_text("Вы уже звали Глеба недавно. Подождите 10 секунд ✋")
-        return
-
-    call_tracker[user_id] = now
-
-    username = user.username or user.first_name
-    message_to_gleb = f"🚨 Пользователь @{username} нажал 'Позвать Глеба'"
-    await context.bot.send_message(chat_id=GLEB_ID, text=message_to_gleb)
-    await update.message.reply_text("Глебу отправлено уведомление ✅")
-
-async def density_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Какие габариты груза? (в м³, например: 10,5)")
-    return VOLUME
-
-async def get_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.replace(",", ".").strip()
-    try:
-        volume = float(text)
-        if volume <= 0:
-            raise ValueError
-        context.user_data['volume'] = volume
-        await update.message.reply_text("Какой вес груза? (в кг, например: 125,5)")
-        return WEIGHT
-    except:
-        await update.message.reply_text("Введите объём в формате 10,5 — положительное число")
-        return VOLUME
-
-async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.replace(",", ".").strip()
-    try:
-        weight = float(text)
-        if weight <= 0:
-            raise ValueError
-        volume = context.user_data['volume']
-        density = weight / volume
-        reply = f"Плотность: {density:.2f} кг/м³"
-        keyboard = [[KeyboardButton("Новый расчёт")], [KeyboardButton("Вернуться в меню")]]
-        await update.message.reply_text(reply, reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-        return ConversationHandler.END
-    except:
-        await update.message.reply_text("Введите вес в формате 125,5 — положительное число")
-        return WEIGHT
-
-async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await density_command(update, context)
-
-async def return_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await start(update, context)
-
-async def packaging_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    options = ["Скотч-мешок", "Обрешетка", "Обрешетка усиленная", "Паллета", "Паллетный борт",
-               "Паллетный борт усиленный", "Деревянный ящик", "Бабл пленка", "Бумажные уголки", "Без упаковки"]
-    keyboard = [[KeyboardButton(o)] for o in options]
-    await update.message.reply_text("Какая упаковка нужна?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-    return PACKAGING_TYPE
 
 packaging_options = {
     "Скотч-мешок": 2,
@@ -114,98 +45,157 @@ packaging_options = {
     "Без упаковки": 0
 }
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! 👋\nВыберите действие:", reply_markup=main_menu_keyboard)
+
+# ========== ПЛОТНОСТЬ ==========
+async def density_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Введите объём груза в м³ (например: 1,2)", reply_markup=ReplyKeyboardRemove())
+    return VOLUME
+
+async def get_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        volume = float(update.message.text.replace(",", "."))
+        if volume <= 0:
+            raise ValueError
+        context.user_data['volume'] = volume
+        await update.message.reply_text("Введите вес груза в кг (например: 125,5)")
+        return WEIGHT
+    except:
+        await update.message.reply_text("Введите объём корректно (например: 1,2)")
+        return VOLUME
+
+async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        weight = float(update.message.text.replace(",", "."))
+        if weight <= 0:
+            raise ValueError
+        volume = context.user_data['volume']
+        density = weight / volume
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton("Новый расчёт"), KeyboardButton("Вернуться в меню")]], resize_keyboard=True
+        )
+        await update.message.reply_text(f"Плотность: {density:.2f} кг/м³", reply_markup=keyboard)
+        return ConversationHandler.END
+    except:
+        await update.message.reply_text("Введите вес корректно (например: 125,5)")
+        return WEIGHT
+
+# ========== УПАКОВКА ==========
+async def packaging_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [[KeyboardButton(k)] for k in packaging_options.keys()]
+    await update.message.reply_text("Выберите тип упаковки:", reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True))
+    return PACKAGING_TYPE
+
 async def get_packaging_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = update.message.text
     if choice not in packaging_options:
         await update.message.reply_text("Пожалуйста, выберите упаковку из списка")
         return PACKAGING_TYPE
-    context.user_data['packaging_rate'] = packaging_options[choice]
-    await update.message.reply_text("Укажите объём груза в м³ (например: 1,2)", reply_markup=ReplyKeyboardRemove())
+    context.user_data['pack_rate'] = packaging_options[choice]
+    await update.message.reply_text("Введите объём груза в м³ (например: 1,2)", reply_markup=ReplyKeyboardRemove())
     return PACKAGING_VOLUME
 
 async def get_packaging_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.replace(",", ".").strip()
     try:
-        volume = float(text)
-        if volume <= 0:
-            raise ValueError
-        rate = context.user_data['packaging_rate']
+        volume = float(update.message.text.replace(",", "."))
+        rate = context.user_data['pack_rate']
         cost = (volume / 0.2) * rate
         await update.message.reply_text(f"Стоимость упаковки: {cost:.2f} $", reply_markup=main_menu_keyboard)
         return ConversationHandler.END
     except:
-        await update.message.reply_text("Введите объём в формате 1,2 — положительное число")
+        await update.message.reply_text("Введите объём корректно (например: 1,2)")
         return PACKAGING_VOLUME
 
-async def transport_charge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Укажите объём груза в м³ (например: 1,2)")
+# ========== ТРАНСПОРТНЫЙ СБОР ==========
+async def transport_charge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Введите объём груза в м³ (например: 1,2)", reply_markup=ReplyKeyboardRemove())
     return TRANSPORT_VOLUME
 
 async def get_transport_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.replace(",", ".").strip()
     try:
-        volume = float(text)
-        if volume <= 0:
-            raise ValueError
-        charge = (volume / 0.2) * 6
-        await update.message.reply_text(f"Транспортный сбор: {charge:.2f} $", reply_markup=main_menu_keyboard)
+        volume = float(update.message.text.replace(",", "."))
+        cost = (volume / 0.2) * 6
+        await update.message.reply_text(f"Транспортный сбор: {cost:.2f} $", reply_markup=main_menu_keyboard)
         return ConversationHandler.END
     except:
-        await update.message.reply_text("Введите объём в формате 1,2 — положительное число")
+        await update.message.reply_text("Введите объём корректно (например: 1,2)")
         return TRANSPORT_VOLUME
 
+# ========== ДОСТАВКА (БЫСТРОЕ АВТО) ==========
 async def delivery_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    types = [[KeyboardButton(t)] for t in delivery_df['Категория'].unique()]
-    await update.message.reply_text("Выберите тип товара:", reply_markup=ReplyKeyboardMarkup(types, resize_keyboard=True))
+    await update.message.reply_text("Выберите тип товара:", reply_markup=ReplyKeyboardMarkup([
+        [KeyboardButton("ТНП"), KeyboardButton("Аксессуары")],
+        [KeyboardButton("Одежда"), KeyboardButton("Обувь")]], resize_keyboard=True))
     return DELIVERY_TYPE
 
 async def get_delivery_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['delivery_type'] = update.message.text
-    await update.message.reply_text("Укажите объём груза в м³:", reply_markup=ReplyKeyboardRemove())
+    choice = update.message.text
+    mapping = {
+        "ТНП": "CONSUMER_GOODS",
+        "Аксессуары": "ACCESSOIRES",
+        "Одежда": "CLOTH",
+        "Обувь": "SHOES"
+    }
+    context.user_data['category'] = mapping.get(choice)
+    await update.message.reply_text("Введите объём груза в м³:", reply_markup=ReplyKeyboardRemove())
     return DELIVERY_VOLUME
 
 async def get_delivery_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        volume = float(update.message.text.replace(",", "."))
-        context.user_data['delivery_volume'] = volume
-        await update.message.reply_text("Укажите вес груза в кг:")
+        context.user_data['volume'] = float(update.message.text.replace(",", "."))
+        await update.message.reply_text("Введите вес груза в кг:")
         return DELIVERY_WEIGHT
     except:
-        await update.message.reply_text("Введите объём в формате 1,2")
+        await update.message.reply_text("Введите объём корректно (например: 1,2)")
         return DELIVERY_VOLUME
 
 async def get_delivery_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         weight = float(update.message.text.replace(",", "."))
-        category = context.user_data['delivery_type']
-        volume = context.user_data['delivery_volume']
+        volume = context.user_data['volume']
         density = weight / volume
-        df = delivery_df[delivery_df['Категория'] == category]
-        row = df[(df['Плотность от'] <= density) & (df['Плотность до'] > density)]
-        if row.empty:
-            await update.message.reply_text("Не удалось найти подходящую ставку")
-            return ConversationHandler.END
+        category = context.user_data['category']
 
-        rate = row.iloc[0]['Ставка']
-        unit = row.iloc[0]['Тип']
-        if unit == 'м3':
-            total = rate * volume
-            reply = f"Объём: {volume} м³\nВес: {weight} кг\nПлотность: {density:.2f} кг/м³\nСтавка: {rate} $/м³\nИтого: {total:.2f} $"
-        else:
-            total = rate * weight
-            reply = f"Объём: {volume} м³\nВес: {weight} кг\nПлотность: {density:.2f} кг/м³\nСтавка: {rate} $/кг\nИтого: {total:.2f} $"
+        row = df[(df['category'] == category) & (df['from'] <= density) & (df['to'] > density)].iloc[0]
+        rate = row['rate']
+        use_cbm = density < 100
 
-        await update.message.reply_text(reply, reply_markup=main_menu_keyboard)
+        cost = rate * (volume if use_cbm else weight)
+        unit = "$ / м³" if use_cbm else "$ / кг"
+
+        await update.message.reply_text(
+            f"Объём: {volume:.2f} м³\nВес: {weight:.2f} кг\nПлотность: {density:.2f} кг/м³\n"
+            f"Ставка: {rate} {unit}\nИтого: {cost:.2f} $",
+            reply_markup=main_menu_keyboard
+        )
         return ConversationHandler.END
-    except Exception as e:
-        await update.message.reply_text("Ошибка. Проверьте формат данных")
+    except:
+        await update.message.reply_text("Введите вес корректно (например: 125,5)")
         return DELIVERY_WEIGHT
+
+# ========== ПРОЧЕЕ ==========
+async def call_gleb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    now = time.time()
+    if now - call_tracker.get(user.id, 0) < 10:
+        await update.message.reply_text("Подождите 10 секунд перед повторным вызовом")
+        return
+    call_tracker[user.id] = now
+    username = user.username or user.first_name
+    await context.bot.send_message(GLEB_ID, f"🚨 @{username} вызвал Глеба")
+    await update.message.reply_text("Глебу отправлено уведомление ✅")
+
+async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await density_start(update, context)
+
+async def return_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await start(update, context)
 
 async def setup_bot_commands(app):
     await app.bot.set_my_commands([
-        BotCommand("start", "Начать работу"),
-        BotCommand("density", "Узнать плотность"),
-        BotCommand("cancel", "Отменить расчёт")
+        BotCommand("start", "Начать"),
+        BotCommand("cancel", "Отмена")
     ])
 
 async def main():
@@ -214,44 +204,49 @@ async def main():
     app.add_handler(CommandHandler("start", start))
 
     app.add_handler(ConversationHandler(
-        entry_points=[CommandHandler("density", density_command),
-                      MessageHandler(filters.Regex("^Рассчитать плотность$"), density_command),
-                      MessageHandler(filters.Regex("^Новый расчёт$"), restart)],
-        states={VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_volume)],
-                WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weight)]},
-        fallbacks=[CommandHandler("cancel", cancel),
-                   MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
+        entry_points=[MessageHandler(filters.Regex("^Рассчитать плотность$"), density_start)],
+        states={
+            VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_volume)],
+            WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weight)]
+        },
+        fallbacks=[MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
         conversation_timeout=300
     ))
 
     app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^Рассчитать упаковку$"), packaging_command)],
-        states={PACKAGING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_type)],
-                PACKAGING_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_volume)]},
-        fallbacks=[CommandHandler("cancel", cancel),
-                   MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
+        entry_points=[MessageHandler(filters.Regex("^Рассчитать упаковку$"), packaging_start)],
+        states={
+            PACKAGING_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_type)],
+            PACKAGING_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_packaging_volume)]
+        },
+        fallbacks=[MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
         conversation_timeout=300
     ))
 
     app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^Рассчитать транспортный сбор$"), transport_charge_command)],
-        states={TRANSPORT_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_transport_volume)]},
-        fallbacks=[CommandHandler("cancel", cancel),
-                   MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
+        entry_points=[MessageHandler(filters.Regex("^Рассчитать транспортный сбор$"), transport_charge)],
+        states={
+            TRANSPORT_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_transport_volume)]
+        },
+        fallbacks=[MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
         conversation_timeout=300
     ))
 
     app.add_handler(ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(r"^Рассчитать доставку \(быстрое авто\)$"), delivery_start)],
-        states={DELIVERY_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_delivery_type)],
-                DELIVERY_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_delivery_volume)],
-                DELIVERY_WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_delivery_weight)]},
-        fallbacks=[CommandHandler("cancel", cancel),
-                   MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
+        entry_points=[MessageHandler(filters.Regex("^Рассчитать доставку \(быстрое авто\)$"), delivery_start)],
+        states={
+            DELIVERY_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_delivery_type)],
+            DELIVERY_VOLUME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_delivery_volume)],
+            DELIVERY_WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_delivery_weight)]
+        },
+        fallbacks=[MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu)],
         conversation_timeout=300
     ))
 
     app.add_handler(MessageHandler(filters.Regex("^Позвать Глеба$"), call_gleb))
+    app.add_handler(MessageHandler(filters.Regex("^Новый расчёт$"), restart))
+    app.add_handler(MessageHandler(filters.Regex("^Вернуться в меню$"), return_to_menu))
+
     await setup_bot_commands(app)
     await app.run_polling()
 
