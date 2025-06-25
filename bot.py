@@ -189,7 +189,7 @@ async def delivery_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = df_filtered[(df_filtered['min'] < density) & (density <= df_filtered['max'])]
         if density <= 100:
             row = df_filtered[df_filtered['min'] < density]
-            price_per_m3 = float(row.iloc[0]['pricePerCbm'])
+            price_per_m3 = float(row.iloc[0]['rate'])
             total = volume * price_per_m3
             await update.message.reply_text(
                 f"Объём: {volume} м³\nВес: {weight} кг\nПлотность: {density:.2f} кг/м³\n"
@@ -197,7 +197,7 @@ async def delivery_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_menu_keyboard
             )
         else:
-            price_per_kg = float(row.iloc[0]['pricePerKg'])
+            price_per_kg = float(row.iloc[0]['rate'])
             total = weight * price_per_kg
             await update.message.reply_text(
                 f"Объём: {volume} м³\nВес: {weight} кг\nПлотность: {density:.2f} кг/м³\n"
