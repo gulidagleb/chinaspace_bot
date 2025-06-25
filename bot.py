@@ -186,9 +186,9 @@ async def delivery_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         density = weight / volume
 
         df_filtered = delivery_df[delivery_df['productType'] == product_type]
-        row = df_filtered[(df_filtered['minDensity'] < density) & (density <= df_filtered['maxDensity'])]
+        row = df_filtered[(df_filtered['min'] < density) & (density <= df_filtered['max'])]
         if density <= 100:
-            row = df_filtered[df_filtered['minDensity'] < density]
+            row = df_filtered[df_filtered['min'] < density]
             price_per_m3 = float(row.iloc[0]['pricePerCbm'])
             total = volume * price_per_m3
             await update.message.reply_text(
