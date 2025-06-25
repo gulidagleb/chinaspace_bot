@@ -48,6 +48,13 @@ packaging_options = {
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! 👋\nВыберите действие:", reply_markup=main_menu_keyboard)
 
+def parse_float(text):
+    try:
+        return float(text.replace(",", ".").strip())
+    except:
+        return None
+
+
 # ========== ПЛОТНОСТЬ ==========
 async def density_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Введите объём груза в м³ (например: 1,2)", reply_markup=ReplyKeyboardRemove())
@@ -151,28 +158,52 @@ async def get_delivery_volume(update: Update, context: ContextTypes.DEFAULT_TYPE
         return DELIVERY_VOLUME
 
 async def get_delivery_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        weight = float(update.message.text.replace(",", "."))
-        volume = context.user_data['volume']
-        density = weight / volume
-        category = context.user_data['category']
-
-        row = df[(df['category'] == category) & (df['from'] <= density) & (df['to'] > density)].iloc[0]
-        rate = row['rate']
-        use_cbm = density < 100
-
-        cost = rate * (volume if use_cbm else weight)
-        unit = "$ / м³" if use_cbm else "$ / кг"
-
-        await update.message.reply_text(
-            f"Объём: {volume:.2f} м³\nВес: {weight:.2f} кг\nПлотность: {density:.2f} кг/м³\n"
-            f"Ставка: {rate} {unit}\nИтого: {cost:.2f} $",
-            reply_markup=main_menu_keyboard
-        )
-        return ConversationHandler.END
-    except:
+    text = update.message.text
+    weight = parse_float(text)
+    if weight is None or weight <= 0:
         await update.message.reply_text("Введите вес корректно (например: 125,5)")
         return DELIVERY_WEIGHT
+
+    volume = context.user_data.get("delivery_volume")
+    if not volume:
+        await update.message.reply_text("Сначала введите объём")
+        return DELIVERY_VOLUME
+
+    density = weight / volume
+    cargo_type = context.user_data.get("delivery_type")
+
+    # Ищем подходящую ставку
+    row = delivery_df[
+        (delivery_df['category'] == cargo_type) &
+        (delivery_df['density_from'] <= density) &
+        (delivery_df['density_to'] > density)
+    ].head(1)
+
+    if row.empty:
+        await update.message.reply_text("Не найдена подходящая ставка для заданной плотности")
+        return ConversationHandler.END
+
+    row = row.iloc[0]
+    rate = row['rate']
+    unit = row['unit']  # 'кг' или 'м³'
+
+    if unit == 'м³':
+        total = rate * volume
+        unit_label = "$ за м³"
+    else:
+        total = rate * weight
+        unit_label = "$ за кг"
+
+    await update.message.reply_text(
+        f"Объём: {volume} м³\n"
+        f"Вес: {weight} кг\n"
+        f"Плотность: {density:.2f} кг/м³\n"
+        f"Ставка: {rate} {unit_label}\n"
+        f"Стоимость доставки: {total:.2f} $",
+        reply_markup=main_menu_keyboard
+    )
+    return ConversationHandler.END
+
 
 # ========== ПРОЧЕЕ ==========
 async def call_gleb(update: Update, context: ContextTypes.DEFAULT_TYPE):
