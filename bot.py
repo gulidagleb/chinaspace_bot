@@ -123,9 +123,9 @@ async def get_delivery_weight(update: Update, context: ContextTypes.DEFAULT_TYPE
     density = weight / volume
 
     row = delivery_df[
-        (delivery_df["category"] == cargo_type) &
-        (delivery_df["density_from"] <= density) &
-        (delivery_df["density_to"] > density)
+        (delivery_df["producttype"] == cargo_type) &
+        (delivery_df["min"] <= density) &
+        (delivery_df["max"] > density)
     ].head(1)
 
     if row.empty:
