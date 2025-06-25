@@ -33,7 +33,7 @@ CATEGORY_LABELS = {
     "ACCESSOIRES": "Аксессуары",
     "CLOTH": "Одежда",
     "SHOES": "Обувь"
-}\n
+}\\n
 main_menu_keyboard = ReplyKeyboardMarkup(
     [[KeyboardButton("Рассчитать плотность")],
      [KeyboardButton("Рассчитать упаковку")],
