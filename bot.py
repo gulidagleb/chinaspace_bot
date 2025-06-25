@@ -149,7 +149,9 @@ async def setup_bot_commands(app):
         BotCommand("cancel", "Отменить расчёт")
     ])
 
-async def main():
+if __name__ == "__main__":
+    from telegram.ext import ApplicationBuilder
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     density_conv = ConversationHandler(
@@ -189,14 +191,5 @@ async def main():
     app.add_handler(packaging_conv)
     app.add_handler(MessageHandler(filters.Regex("^Позвать Глеба$"), call_gleb))
 
-    await setup_bot_commands(app)
-    await app.run_polling()
-
-if __name__ == "__main__":
-    import asyncio
-    try:
-        asyncio.run(main())
-    except RuntimeError:
-        import nest_asyncio
-        nest_asyncio.apply()
-        asyncio.get_event_loop().run_until_complete(main())
+    asyncio.get_event_loop().create_task(setup_bot_commands(app))
+    app.run_polling()
