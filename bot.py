@@ -155,9 +155,9 @@ async def calculate_delivery(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"{CATEGORY_LABELS[pt]} / {pn}\n"
             f"{volume} м³ {weight} кг (Плотность: {density:.2f})\n\n"
             f"📊 *Расчет:*\n"
-            f"Доставка: {rcost:.2f}$ ({rate_text})\n"
+            f"Доставка в МСК: {rcost:.2f}$ ({rate_text})\n"
             f"Упаковка: {pcost:.2f}$\n"
-            f"Транспорт: {tcost:.2f}$\n\n"
+            f"Транспортный сбор: {tcost:.2f}$\n\n"
             f"🚚 *Итого Авто 12-18 дней:*\n"
             f"{total:.2f}$"
         )
