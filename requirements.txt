@@ -5,3 +5,4 @@ nest_asyncio
 aiohttp
 gspread
 google-auth
+oauth2client
