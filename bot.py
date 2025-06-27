@@ -22,7 +22,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 cached_rates = None
 rates_timestamp = None
 
-TOKEN = "8142538757:AAFKoH3QTPZ4oydP5pPM7L9XdDdGIvkGUSc"
+TOKEN = BOT_TOKEN
 
 VOLUME, WEIGHT, DELIVERY_TYPE, PACKAGING_TYPE = range(4)
 DELIVERY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSsjTJ6lsQrm1SuD9xWWtD2PNPE3f94d9C_fQ1MO5dVt--Fl4jUsOlupp8qksdb_w/pub?gid=1485895245&single=true&output=csv"
@@ -56,8 +56,8 @@ def save_to_google_sheets(data: list):
     try:
         scope = ['https://spreadsheets.google.com/feeds',
                  'https://www.googleapis.com/auth/drive']
-        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-        client = gspread.authorize(creds)
+        creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
         sheet = client.open("Cargo22 клиенты").sheet1  # Название таблицы
         sheet.append_row(data)
