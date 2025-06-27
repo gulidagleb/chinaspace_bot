@@ -22,7 +22,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 cached_rates = None
 rates_timestamp = None
 
-TOKEN = BOT_TOKEN
+TOKEN = os.environ.get("BOT_TOKEN")
 
 VOLUME, WEIGHT, DELIVERY_TYPE, PACKAGING_TYPE = range(4)
 DELIVERY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSsjTJ6lsQrm1SuD9xWWtD2PNPE3f94d9C_fQ1MO5dVt--Fl4jUsOlupp8qksdb_w/pub?gid=1485895245&single=true&output=csv"
