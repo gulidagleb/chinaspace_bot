@@ -12,6 +12,9 @@ from telegram.ext import (
     CallbackQueryHandler, ConversationHandler,
     ContextTypes, filters
 )
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -47,6 +50,18 @@ main_menu_keyboard = ReplyKeyboardMarkup(
 )
 
 from datetime import datetime, timedelta
+
+def save_to_google_sheets(data: list):
+    try:
+        scope = ['https://spreadsheets.google.com/feeds',
+                 'https://www.googleapis.com/auth/drive']
+        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        client = gspread.authorize(creds)
+
+        sheet = client.open("Cargo22 клиенты").sheet1  # Название таблицы
+        sheet.append_row(data)
+    except Exception as e:
+        logging.error(f"Ошибка записи в Google Sheets: {e}")
 
 cached_rates = None
 rates_timestamp = None
@@ -137,29 +152,35 @@ async def get_packaging_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE)
     _, pack = q.data.split("|")
     ctx.user_data['packaging_name'] = pack
     ctx.user_data['packaging_rate'] = PACKAGING_OPTIONS[pack]
-    return await calculate_delivery(q.message, ctx)
+    return await calculate_delivery(update, ctx)
 
 async def calculate_delivery(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
+        msg = update.message or update.callback_query.message
+
         volume = ctx.user_data['volume']
         weight = ctx.user_data['weight']
         pt = ctx.user_data['product_type']
         pr = ctx.user_data['packaging_rate']
         pn = ctx.user_data['packaging_name']
         density = weight / volume
+
         df = delivery_df[delivery_df['productType'] == pt]
         if density <= 100:
             row = df[df['min'] < density]
         else:
             row = df[df['min'] == 400] if density >= 400 else df[(df['min'] < density) & (density <= df['max'])]
+
         if row.empty:
             raise ValueError("Нет ставки")
+
         rate = float(row.iloc[0]['rate'])
         rcost = volume * rate if density <= 100 else weight * rate
         rate_text = f"{rate} $/м³" if density <= 100 else f"{rate} $/кг"
         pcost = (volume / 0.2) * pr
         tcost = (volume / 0.2) * 6
         total = rcost + pcost + tcost
+
         resp = (
             f"📦 *По вашему запросу:*\n"
             f"{CATEGORY_LABELS[pt]} / {pn}\n"
@@ -168,15 +189,49 @@ async def calculate_delivery(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"Доставка в МСК: {rcost:.2f}$ ({rate_text})\n"
             f"Упаковка: {pcost:.2f}$\n"
             f"Транспортный сбор: {tcost:.2f}$\n\n"
-            f"🚚 *Итого Авто 12-18 дней:*\n"
+            f"🚚 *Итого Авто 12–18 дней:*\n"
             f"{total:.2f}$"
         )
-        await update.reply_text(resp, reply_markup=main_menu_keyboard, parse_mode="Markdown")
+
+        await msg.reply_text(resp, reply_markup=main_menu_keyboard, parse_mode="Markdown")
+
+        # 🔔 Отправка уведомления в группу
+        NOTIFY_CHAT_ID = -4790449381
+        user = update.effective_user
+        username = (
+            f"@{user.username}"
+            if user.username else f"{user.first_name} {user.last_name or ''}".strip()
+        )
+        notify_text = f"📢 Пользователь {username} сделал расчёт доставки:\n\n{resp}"
+        await ctx.bot.send_message(chat_id=NOTIFY_CHAT_ID, text=notify_text, parse_mode="Markdown")
+
+        user = update.effective_user
+        username = (
+            f"@{user.username}"
+            if user.username else f"{user.first_name} {user.last_name or ''}".strip()
+        )
+        save_to_google_sheets([
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            username,
+            volume,
+            weight,
+            CATEGORY_LABELS[pt],
+            pn,
+            round(density, 2),
+            rate,
+            round(rcost, 2),
+            round(pcost, 2),
+            round(tcost, 2),
+            round(total, 2)
+        ])
+
         return ConversationHandler.END
+
     except Exception as e:
         logging.exception("Ошибка расчёта")
-        await update.message.reply_text("Ошибка рассчёта. Проверьте ввод.")
+        await msg.reply_text("Ошибка рассчёта. Проверьте ввод.")
         return ConversationHandler.END
+
 
 async def setup_bot_commands(app):
     await app.bot.set_my_commands([
