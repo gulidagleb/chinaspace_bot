@@ -3,3 +3,5 @@ pandas
 requests
 nest_asyncio
 aiohttp
+gspread
+google-auth
