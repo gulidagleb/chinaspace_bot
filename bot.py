@@ -15,6 +15,9 @@ from telegram.ext import (
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
+cached_rates = None
+rates_timestamp = None
+
 TOKEN = "8142538757:AAFKoH3QTPZ4oydP5pPM7L9XdDdGIvkGUSc"
 
 VOLUME, WEIGHT, DELIVERY_TYPE, PACKAGING_TYPE = range(4)
@@ -43,30 +46,37 @@ main_menu_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-import json
+from datetime import datetime, timedelta
+
+cached_rates = None
+rates_timestamp = None
 
 async def get_exchange_rates():
+    global cached_rates, rates_timestamp
     try:
+        now = datetime.now()
+        if cached_rates and rates_timestamp and now - rates_timestamp < timedelta(minutes=30):
+            return cached_rates  # Возвращаем кэш
+
         async with aiohttp.ClientSession() as session:
-            async with session.get("https://www.cbr-xml-daily.ru/latest.js") as resp:
-                text = await resp.text()
-                data = json.loads(text)
-                logging.info(f"Ответ от ЦБ API: {data}")
-                rates = data.get("rates")
-                if not isinstance(rates, dict):
-                    raise ValueError("Некорректный формат rates")
+            async with session.get("https://api.chinaspace.io/exchange-rates/bot/current") as resp:
+                data = await resp.json()
+                logging.info(f"Ответ от API: {data}")
 
-                usd = rates.get("USD")
-                cny = rates.get("CNY")
-                if usd is None or cny is None:
-                    raise ValueError("Нет данных по USD или CNY")
+                usdtrmb = float(data.get("usdtrmb"))
+                originalusdtrub = float(data.get("originalusdtrub"))
 
-                usd_rub = (1 / usd) * 1.035
-                cny_rub = (1 / cny) * 1.04
-                return round(usd_rub, 2), round(cny_rub, 2)
+                usd_rub = originalusdtrub * 1.02
+                usd_cny = usdtrmb - 0.1
+                cny_rub = usd_rub / usd_cny
+
+                cached_rates = (round(usd_rub, 2), round(cny_rub, 2), round(usd_cny, 2))
+                rates_timestamp = now
+
+                return cached_rates
     except Exception as e:
         logging.error(f"Ошибка получения курсов: {e}")
-        return None, None
+        return None, None, None
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! 👋\nВыберите действие:", reply_markup=main_menu_keyboard)
@@ -75,14 +85,14 @@ async def contact_manager(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Напишите нам 👉 @chinaspace_bot")
 
 async def show_rates(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    usd, cny = await get_exchange_rates()
-    if usd is None or cny is None:
+    usd_rub, cny_rub, usd_cny = await get_exchange_rates()
+    if usd_rub is None:
         await update.message.reply_text("Не удалось получить курсы валют, попробуйте позже.")
         return
     await update.message.reply_text(
         f"💱 Курс валют сейчас:\n"
-        f"$ = {usd:.2f} ₽\n"
-        f"¥ = {cny:.2f} ₽"
+        f"$ = {usd_rub:.2f} ₽\n"
+        f"¥ = {cny_rub:.2f} ₽\n"
     )
 
 async def delivery_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -169,11 +179,17 @@ async def calculate_delivery(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def setup_bot_commands(app):
-    await app.bot.set_my_commands([BotCommand("start", "Начать")])
+    await app.bot.set_my_commands([
+        BotCommand("start", "Начать"),
+        BotCommand("rates", "Курс валют"),
+        BotCommand("delivery", "Рассчитать доставку")
+    ])
 
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("rates", show_rates))
+    app.add_handler(CommandHandler("delivery", delivery_start))
     app.add_handler(MessageHandler(filters.Regex("^Написать менеджеру$"), contact_manager))
     app.add_handler(MessageHandler(filters.Regex("^Курс валют$"), show_rates))
     conv = ConversationHandler(
