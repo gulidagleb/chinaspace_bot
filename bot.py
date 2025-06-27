@@ -3,6 +3,7 @@ import logging
 import asyncio
 import pandas as pd
 import aiohttp
+import gspread
 from telegram import (
     Update, ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
